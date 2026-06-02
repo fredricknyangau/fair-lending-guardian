@@ -1,0 +1,8 @@
+.crewai-data/
+.crewai-home/
+.ruff_cache/
+.venv/
+__pycache__/
+.env
+.env.*
+!.env.example

@@ -2,4 +2,5 @@ crewai
 litellm
 python-dotenv
 streamlit
-pydantic==1.10.12
+# Use pydantic v2 to match crewai and modern dependencies
+pydantic>=2.11.9

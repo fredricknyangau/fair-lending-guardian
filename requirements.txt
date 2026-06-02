@@ -1,4 +1,5 @@
-crewai
+# Use crewai with google-genai extra for Gemini LLM provider
+crewai[google-genai]
 litellm
 python-dotenv
 streamlit

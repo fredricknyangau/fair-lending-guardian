@@ -1,5 +1,7 @@
 # ruff: noqa: E402
 
+import os
+import random
 import time
 
 import crewai_env
@@ -204,31 +206,40 @@ if submitted:
         )
 
         retry_attempts = 3
-        retry_delay = 30
+        base_delay = 5  # seconds — triples each attempt: 5 → 15 → 45
         result = None
+
+        def _is_retryable(exc: Exception) -> bool:
+            """Return True for rate-limit or transient 503 errors from any provider."""
+            exc_str = str(exc).lower()
+            exc_type = type(exc).__name__
+            return (
+                (litellm is not None and isinstance(
+                    exc, getattr(litellm, "RateLimitError", type(None))
+                ))
+                or "RateLimitError" in exc_type
+                or "rate_limit_exceeded" in exc_str
+                or "resource_exhausted" in exc_str
+                or "429" in exc_str
+                or "503" in exc_str
+                or "unavailable" in exc_str
+                or "service_unavailable" in exc_str
+            )
 
         for attempt in range(1, retry_attempts + 1):
             try:
                 result = crew.kickoff()
                 break
             except Exception as exc:
-                is_rate_limit = False
-                if (
-                    litellm is not None
-                    and isinstance(exc, getattr(litellm, "RateLimitError", Exception))
-                    or "RateLimitError" in type(exc).__name__
-                    or "rate_limit_exceeded" in str(exc).lower()
-                ):
-                    is_rate_limit = True
-
-                if not is_rate_limit or attempt == retry_attempts:
+                if not _is_retryable(exc) or attempt == retry_attempts:
                     raise
 
+                delay = base_delay * (3 ** (attempt - 1)) + random.uniform(0, 2)  # noqa: S311
                 st.warning(
-                    f"Groq rate limit hit (attempt {attempt}/{retry_attempts}). "
-                    f"Retrying in {retry_delay} seconds..."
+                    f"⏳ API limit or transient error (attempt {attempt}/{retry_attempts}). "
+                    f"Retrying in {delay:.0f} seconds..."
                 )
-                time.sleep(retry_delay)
+                time.sleep(delay)
 
         scout_placeholder.success(
             "🔭 Scout Agent: financial stress signal confirmed — handoff to Guardian"
@@ -265,4 +276,18 @@ if submitted:
 
     except Exception as e:
         st.error(f"Agent processing error: {e}")
-        st.caption("Check your GROQ_API_KEY in the .env file.")
+        provider = os.getenv("LLM_PROVIDER", "gemini").lower()
+        _key_hints: dict[str, str] = {
+            "gemini": "GOOGLE_API_KEY",
+            "groq": "GROQ_API_KEY",
+            "cohere": "COHERE_API_KEY",
+            "cerebras": "CEREBRAS_API_KEY",
+            "ollama": (
+                "OLLAMA_API_BASE (default: http://localhost:11434) — no key needed"
+            ),
+        }
+        key_hint = _key_hints.get(provider, f"{provider.upper()}_API_KEY")
+        st.caption(
+            f"Provider: {provider.upper()} · "
+            f"Check your {key_hint} in .env / Streamlit secrets."
+        )

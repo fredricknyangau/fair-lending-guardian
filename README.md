@@ -11,6 +11,7 @@
 ## Table of Contents
 
 - [Overview](#overview)
+- [How It Works](#how-it-works)
 - [Architecture](#architecture)
   - [Agent Pride](#agent-pride)
   - [GUARD Safety Layer](#guard-safety-layer)
@@ -48,6 +49,105 @@ for human loan officers while enforcing strict dignity and anti-discrimination g
 | Portfolio default rate ceiling | < 3% |
 | Member data sovereignty | 100% (no third-party data sharing) |
 | Human-in-the-loop threshold | All loans > KES 15,000 |
+
+---
+
+## How It Works
+
+### The Problem It Solves
+
+Traditional credit scoring fails smallholder farmers and informal traders in Kenya.
+A market vendor or maize farmer has **seasonal, irregular income** — but that is
+completely normal for their context, not a sign of risk. Conventional bank algorithms
+see irregular cashflow and reject the application. Fair Lending Guardian understands
+that context and screens loans fairly.
+
+### System Layers (from bottom to top)
+
+#### Layer 1 — GUARD (`guard.py`) — runs before any AI
+
+Four pure-Python safety rules that fire **before** the agents start. No LLM is involved:
+
+| Function | What it does |
+|---|---|
+| `proxy_block()` | Rejects inputs containing `gender`, `tribe`, `ethnicity`, `religion`, `sub_county_risk` — illegal discrimination proxies |
+| `kill_switch_check()` | If the member's SMS mentions `"loan shark"`, `"debt collector"`, `"lawyer"`, `"court"` — the whole system pauses and escalates to a human supervisor immediately |
+| `dignity_filter()` | Scans AI outputs for words like `"unreliable"`, `"risky"`, `"informal"`, `"irregular"` — banned because they dehumanise the applicant |
+| `unusual_pattern_check()` | If the system's approval rate drops >30 percentage points vs the 30-day baseline, it triggers a SASRA regulatory notification |
+
+This is the safety harness — the agents literally cannot run if GUARD fires.
+
+#### Layer 2 — The Three Agents (`agents.py`, `tasks.py`)
+
+All three share the same LLM (configurable — see [LLM Providers](#llm-providers)),
+run sequentially, and cannot delegate to each other (`allow_delegation=False`) — that
+prevents an agent from silently spawning extra LLM calls.
+
+**🔭 Scout Agent**
+- Reads the member's SMS message and profile (name, age, occupation, dependants, harvest months)
+- Detects whether the SMS is a financial stress signal
+- If yes, packages a structured handoff — child ages, next harvest date, estimated savings — and passes it to the Guardian
+- Hard constraint: max 3 SMS per day per member, never recommends specific loan products
+
+**🛡️ Guardian Agent**
+- Receives the Scout's handoff plus 52 weeks of M-Pesa weekly inflows
+- Runs a full cashflow analysis (average inflow, income stability, repayment capacity ratio)
+- Applies routing rules in strict order:
+
+```
+Loan > KES 15,000 (any score)     → MANDATORY escalation to Hunter
+Score ≥ 90 and loan ≤ KES 15,000  → APPROVE directly
+Score 70–89                        → ESCALATE to Hunter Agent
+Score < 70 with 3+ risk flags      → DECLINE with empathetic SMS
+```
+
+- Critical design decision: seasonal income spikes (harvest months) are classified as
+  **neutral**, not risk flags. A high-to-low ratio above 3.0 = expected for farmers.
+
+**🎯 Hunter Agent**
+- Receives the Guardian's enriched assessment
+- Writes a structured briefing packet for a named human loan officer
+- Matches the officer to the applicant by speciality (e.g., maize farming expertise for Kakamega)
+- **Cannot approve or deny anything** — its only job is to prepare the packet and alert
+  the officer within 15 minutes
+
+#### Layer 3 — The PRIDE Loop (`app.py`)
+
+A mandatory human gate enforced in the UI. If the loan exceeds **KES 15,000**, the app
+shows a hard warning block:
+
+> "A named human loan officer must make the final decision.
+> Officer SLA: 15 minutes. Member appeal right: dial \*#123#."
+
+The AI is **advisory only** — the human officer owns the final call.
+
+#### Layer 4 — The UI (`app.py` with Streamlit)
+
+A web form where you enter the applicant's details, hit **"Run Agent Pride"**, and
+watch the three agents work sequentially. The final Hunter briefing packet renders
+on the page. There is also a CLI entry point (`main.py`) for debugging without the UI.
+
+### The Reference Test Case (`mock_data.py`)
+
+The default applicant is **Grace Achieng**, age 42, maize farmer in Kakamega North,
+asking for **KES 28,000** for school fees. Her 52-week M-Pesa history shows:
+
+- Steady ~KES 3,000–3,400/week most weeks
+- Spikes to ~KES 6,500–6,800 in harvest months (March/April, September/October)
+- Dips to ~KES 1,800–2,100 in January (school fee month, cash depleted)
+
+A traditional algorithm penalises the dips and flags the spikes. This system
+recognises both as **culturally expected patterns** and scores her fairly.
+
+### Tech Stack Summary
+
+```
+Streamlit          → Web UI layer
+CrewAI             → Multi-agent orchestration framework
+LiteLLM            → Universal LLM adapter (routes to all supported providers)
+Mistral / Gemini / Groq / Cohere / Cerebras  → Configurable LLM backends
+guard.py           → Pure Python safety rules (no AI involved)
+```
 
 ---
 
@@ -147,9 +247,12 @@ fair-lending-guardian/
 
 - **Python 3.11+** (see `runtime.txt` for exact pin)
 - A virtual environment manager (`venv`, `uv`, etc.)
-- One of:
-  - **Google AI Studio API key** (Gemini 2.5 Flash — default)
-  - **Groq API key** (Llama 3.1 8B Instant — faster, lower cost)
+- **One** of the following LLM backends:
+  - **Ollama** installed locally + `ollama pull mistral` (zero rate limits, no API key)
+  - **Google AI Studio API key** — [aistudio.google.com](https://aistudio.google.com/app/apikey) (Gemini 2.5 Flash)
+  - **Groq API key** — [console.groq.com](https://console.groq.com) (Llama 3.1 8B Instant)
+  - **Cohere API key** — [dashboard.cohere.com](https://dashboard.cohere.com/api-keys) (Command R, 1 000 req/month free)
+  - **Cerebras API key** — [cloud.cerebras.ai](https://cloud.cerebras.ai) (Llama 3.1 8B, very fast)
 
 ---
 
@@ -203,19 +306,24 @@ Hunter Agent briefing packet.
 
 ### LLM Providers
 
-Set `LLM_PROVIDER` in your `.env` file:
+Set `LLM_PROVIDER` in your `.env` file. Only the key for your chosen provider is needed:
 
-| Value | Model | Use when |
-|---|---|---|
-| `gemini` *(default)* | `gemini-2.5-flash` | Requires `GOOGLE_API_KEY` |
-| `groq` | `groq/llama-3.1-8b-instant` | Requires `GROQ_API_KEY`; faster, cheaper |
+| `LLM_PROVIDER` value | Model | Required env var | Notes |
+|---|---|---|---|
+| `gemini` *(default)* | `gemini/gemini-2.5-flash` | `GOOGLE_API_KEY` | 60 req/min free tier |
+| `groq` | `groq/llama-3.1-8b-instant` | `GROQ_API_KEY` | 60 req/min free tier, very fast |
+| `ollama` | `ollama/mistral` | none | Local only — run `ollama pull mistral` first |
+| `cohere` | `cohere/command-a-03-2025` | `COHERE_API_KEY` | 1 000 req/month free trial |
+| `cerebras` | `cerebras/llama3.1-8b` | `CEREBRAS_API_KEY` | OpenAI-compatible, very fast |
 
-**Rate limiting:** the Streamlit app automatically retries up to 3 times with a 30-second
-back-off on Groq rate limit errors.
+**Rate limiting:** the Streamlit app automatically retries up to 3 times with
+exponential back-off (5 → 15 → 45 seconds) on rate limit or transient 503 errors
+from any provider.
 
-**Groq compatibility patch:** CrewAI injects `cache_breakpoint` markers into messages
-that the Groq API rejects. `agents.py` patches this via a custom `GroqLLM` subclass
-and a `litellm.completion` wrapper that strips the unsupported field before every call.
+**`cache_breakpoint` compatibility patch:** CrewAI injects `cache_breakpoint` markers
+into messages that some APIs (Groq, Ollama, Cohere, Cerebras) reject. `agents.py`
+handles this via a `SafeLLM` subclass and a `litellm.completion` wrapper that strips
+the unsupported field before every call, for all providers.
 
 ---
 
@@ -384,11 +492,11 @@ dict at task-build time, not inferred from agent outputs.
 |---|---|
 | M-Pesa inflow data is hardcoded (Grace mock) | Connect to real M-Pesa statement parser |
 | 52-week inflows are not fetched live | Integrate Safaricom Open API or statement upload |
-| `LLM_PROVIDER` switching requires restart | Make provider selectable from Streamlit sidebar |
+| ~~`LLM_PROVIDER` switching requires restart~~ | ✅ Done — 5 providers supported via `.env`: `gemini`, `groq`, `ollama`, `cohere`, `cerebras` |
 | No persistent audit log of decisions | Add SQLite/PostgreSQL decision log |
 | No multilingual SMS output | Add Swahili and Dholuo output modes |
 | SASRA notification is a stub (`raise ValueError`) | Wire to real alerting channel (email/SMS gateway) |
-| Groq temperature fixed at 0.2 | Expose temperature as env var |
+| LLM temperature fixed at 0.2 | Expose temperature as env var |
 | Gemini 503 transient errors on Hunter turn | Add explicit retry loop (currently relies on CrewAI internal retry) |
 
 ---

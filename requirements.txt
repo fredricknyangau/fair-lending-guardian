@@ -1,7 +1,11 @@
-# Use crewai with google-genai extra for Gemini LLM provider
+# CrewAI core — includes LiteLLM which routes to all providers
 crewai[google-genai]
 litellm
 python-dotenv
 streamlit
-# Use pydantic v2 to match crewai and modern dependencies
+# Pydantic v2 to match crewai and modern dependencies
 pydantic>=2.11.9
+# Cohere provider — required by LiteLLM for cohere/* models
+cohere
+# Cerebras uses OpenAI-compatible API (openai pkg already pulled in by crewai)
+# Ollama works natively with LiteLLM — no extra package needed

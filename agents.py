@@ -13,14 +13,65 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Choose LLM provider: set to "groq" or "gemini"
+# Choose LLM provider — set LLM_PROVIDER in .env
+# Supported: groq | gemini | ollama | cohere | cerebras
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").lower()
 
-# Model configuration by provider
-MODELS = {
-    "groq": "groq/llama-3.1-8b-instant",
-    "gemini": "gemini-2.5-flash",
+# Model identifiers understood by LiteLLM (used by CrewAI under the hood)
+MODELS: dict[str, str] = {
+    "groq": "groq/llama-3.1-8b-instant",       # 60 req/min free — fast
+    "gemini": "gemini/gemini-2.5-flash",        # 60 req/min free — best quality
+    "ollama": "ollama/mistral",                  # local, zero rate limits
+    "cohere": "cohere/command-a-03-2025",        # 1 000 req/month free trial
+    "cerebras": "cerebras/llama3.1-8b",         # very fast, OpenAI-compatible
 }
+
+if LLM_PROVIDER not in MODELS:
+    raise ValueError(
+        f"Unknown LLM_PROVIDER='{LLM_PROVIDER}'. "
+        f"Valid options: {', '.join(MODELS)}"
+    )
+
+# ─── Fallback chain ──────────────────────────────────────────────────────────
+# LLM_FALLBACK_CHAIN = comma-separated providers tried in order when the
+# primary hits a rate limit or returns a transient error.
+# Example: LLM_FALLBACK_CHAIN=groq,gemini
+# Ollama can appear here too (no API key required, zero rate limits).
+_fallback_raw = os.getenv("LLM_FALLBACK_CHAIN", "")
+FALLBACK_PROVIDERS: list[str] = [
+    p.strip()
+    for p in _fallback_raw.split(",")
+    if p.strip() and p.strip() in MODELS and p.strip() != LLM_PROVIDER
+]
+
+# All providers that will actually be used (primary + fallbacks)
+_active_providers: set[str] = {LLM_PROVIDER} | set(FALLBACK_PROVIDERS)
+
+# Strip API keys for providers not in the active set so CrewAI's internal
+# flow orchestrator cannot auto-detect and default to an inactive provider.
+_PROVIDER_KEYS: dict[str, str] = {
+    "gemini": "GOOGLE_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "cohere": "COHERE_API_KEY",
+    "cerebras": "CEREBRAS_API_KEY",
+}
+for _prov, _key in _PROVIDER_KEYS.items():
+    if _prov not in _active_providers:
+        os.environ.pop(_key, None)
+
+# Register fallbacks with LiteLLM globally — applies to all completion calls
+# made by agents AND CrewAI's internal flow orchestration.
+try:
+    import litellm as _litellm
+
+    if FALLBACK_PROVIDERS:
+        _primary = MODELS[LLM_PROVIDER]
+        _fallbacks = [MODELS[p] for p in FALLBACK_PROVIDERS]
+        _litellm.fallbacks = [{_primary: _fallbacks}]
+        # Also register as context-window fallbacks (different error type)
+        _litellm.context_window_fallbacks = [{_primary: _fallbacks}]
+except ImportError:
+    pass
 
 # Patch LiteLLM to strip cache_breakpoint for all models (not all APIs support it)
 try:
@@ -46,8 +97,13 @@ except ImportError:
     pass
 
 
-class GroqLLM(LLM):
-    """CrewAI LiteLLM wrapper that removes unsupported cache markers for Groq."""
+class SafeLLM(LLM):
+    """CrewAI LiteLLM wrapper that strips cache_breakpoint for all providers.
+
+    Some APIs (Groq, Ollama, Cohere, Cerebras) reject the cache_breakpoint
+    field that CrewAI injects into messages. This subclass intercepts every
+    completion call and removes it before the request is sent.
+    """
 
     def _prepare_completion_params(
         self,
@@ -61,7 +117,7 @@ class GroqLLM(LLM):
             skip_file_processing,
         )
 
-        # Remove cache_breakpoint from all messages as Groq doesn't support it
+        # Strip cache_breakpoint — not supported by Groq, Ollama, Cohere, Cerebras
         for message in params.get("messages", []):
             if isinstance(message, dict):
                 message.pop("cache_breakpoint", None)
@@ -73,7 +129,7 @@ class GroqLLM(LLM):
         messages: list[dict[str, str]],
         **kwargs: Any,
     ) -> str:
-        """Override call method to strip cache_breakpoint before sending to Groq."""
+        """Strip cache_breakpoint before sending to any provider that rejects it."""
         # Deep copy messages to avoid modifying originals
         messages_copy = copy.deepcopy(messages)
 
@@ -89,7 +145,7 @@ class GroqLLM(LLM):
         return super().call(messages_copy, **kwargs)
 
 
-llm = GroqLLM(model=MODELS[LLM_PROVIDER], temperature=0.2)
+llm = SafeLLM(model=MODELS[LLM_PROVIDER], temperature=0.2, max_tokens=1500)
 
 scout_agent = Agent(
     role="financial literacy coach — scout agent",
@@ -107,7 +163,8 @@ scout_agent = Agent(
         "debt collectors, or school fee stress. Your kill switch is dial 700."
     ),
     verbose=True,
-    allow_delegation=True,
+    allow_delegation=False,  # Prevents extra delegated LLM calls on each turn
+    max_iter=3,              # Cap internal ReAct loop — avoids runaway token burn
     llm=llm,
 )
 
@@ -130,7 +187,8 @@ guardian_agent = Agent(
         "Your kill switch is dial 733."
     ),
     verbose=True,
-    allow_delegation=True,
+    allow_delegation=False,  # Guardian must not delegate — it owns the scoring decision
+    max_iter=3,
     llm=llm,
 )
 
@@ -152,5 +210,6 @@ hunter_agent = Agent(
     ),
     verbose=True,
     allow_delegation=False,
+    max_iter=3,
     llm=llm,
 )

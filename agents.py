@@ -19,17 +19,16 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").lower()
 
 # Model identifiers understood by LiteLLM (used by CrewAI under the hood)
 MODELS: dict[str, str] = {
-    "groq": "groq/llama-3.1-8b-instant",       # 60 req/min free — fast
-    "gemini": "gemini/gemini-2.5-flash",        # 60 req/min free — best quality
-    "ollama": "ollama/mistral",                  # local, zero rate limits
-    "cohere": "cohere/command-a-03-2025",        # 1 000 req/month free trial
-    "cerebras": "cerebras/llama3.1-8b",         # very fast, OpenAI-compatible
+    "groq": "groq/llama-3.1-8b-instant",  # 60 req/min free — fast
+    "gemini": "gemini/gemini-2.5-flash",  # 60 req/min free — best quality
+    "ollama": "ollama/mistral",  # local, zero rate limits
+    "cohere": "cohere/command-a-03-2025",  # 1 000 req/month free trial
+    "cerebras": "cerebras/llama3.1-8b",  # very fast, OpenAI-compatible
 }
 
 if LLM_PROVIDER not in MODELS:
     raise ValueError(
-        f"Unknown LLM_PROVIDER='{LLM_PROVIDER}'. "
-        f"Valid options: {', '.join(MODELS)}"
+        f"Unknown LLM_PROVIDER='{LLM_PROVIDER}'. " f"Valid options: {', '.join(MODELS)}"
     )
 
 # ─── Fallback chain ──────────────────────────────────────────────────────────
@@ -107,7 +106,7 @@ class SafeLLM(LLM):
 
     def _prepare_completion_params(
         self,
-        messages: str | list[dict[str, Any]],
+        messages: Any,
         tools: list[dict[str, Any]] | None = None,
         skip_file_processing: bool = False,
     ) -> dict[str, Any]:
@@ -126,7 +125,7 @@ class SafeLLM(LLM):
 
     def call(
         self,
-        messages: list[dict[str, str]],
+        messages: Any,
         **kwargs: Any,
     ) -> str:
         """Strip cache_breakpoint before sending to any provider that rejects it."""
@@ -164,7 +163,7 @@ scout_agent = Agent(
     ),
     verbose=True,
     allow_delegation=False,  # Prevents extra delegated LLM calls on each turn
-    max_iter=3,              # Cap internal ReAct loop — avoids runaway token burn
+    max_iter=3,  # Cap internal ReAct loop — avoids runaway token burn
     llm=llm,
 )
 
@@ -180,11 +179,11 @@ guardian_agent = Agent(
         "You are a TRACK-audited credit analyst who assesses loan applications using "
         "52 weeks of M-Pesa transaction patterns, not occupation labels. You never "
         "use sub-county address, gender, or occupation category as a creditworthiness "
-        "indicator. You calculate income stability by comparing weekly inflow standard "
-        "deviation against harvest-cycle norms. Every denial must include an empathetic "
-        "SMS in the member's declared language with a specific actionable next step. "
-        "You never use the words unreliable, risky, informal, or unverifiable. "
-        "Your kill switch is dial 733."
+        "indicator. You calculate income stability by comparing weekly inflow "
+        "standard deviation against harvest-cycle norms. Every denial must include "
+        "an empathetic SMS in the member's declared language with a specific "
+        "actionable next step. You never use the words unreliable, risky, informal, "
+        "or unverifiable. Your kill switch is dial 733."
     ),
     verbose=True,
     allow_delegation=False,  # Guardian must not delegate — it owns the scoring decision
@@ -202,11 +201,11 @@ hunter_agent = Agent(
     ),
     backstory=(
         "You are a coordination specialist who translates complex M-Pesa data into "
-        "clear, human-readable briefing packets. You know each loan officer's specialty "
-        "areas. You surface cross-sell opportunities like drought insurance. You frame "
-        "every briefing with the member's dignity at the centre, not the risk metrics. "
-        "You have a full system kill switch at dial 799 that pauses all three agents "
-        "and convenes the Elders Council within 2 business days."
+        "clear, human-readable briefing packets. You know each loan officer's "
+        "specialty areas. You surface cross-sell opportunities like drought insurance. "
+        "You frame every briefing with the member's dignity at the centre, not the "
+        "risk metrics. You have a full system kill switch at dial 799 that pauses all "
+        "three agents and convenes the Elders Council within 2 business days."
     ),
     verbose=True,
     allow_delegation=False,

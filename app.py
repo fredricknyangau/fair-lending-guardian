@@ -3,6 +3,7 @@
 import os
 import random
 import time
+from datetime import datetime
 
 import crewai_env
 
@@ -18,6 +19,7 @@ except ImportError:
 
 from agents import guardian_agent, hunter_agent, scout_agent
 from guard import kill_switch_check, proxy_block
+from mock_data import GRACE_APPLICATION
 from tasks import build_tasks
 
 st.set_page_config(
@@ -52,8 +54,13 @@ with st.form("application_form"):
     c1, c2 = st.columns(2)
 
     with c1:
-        name = st.text_input("Applicant name", value="Grace Achieng")
-        age = st.number_input("Age", min_value=18, max_value=80, value=42)
+        name = st.text_input("Applicant name", value=GRACE_APPLICATION["name"])
+        age = st.number_input(
+            "Age",
+            min_value=18,
+            max_value=80,
+            value=GRACE_APPLICATION["age"],
+        )
         occupation = st.selectbox(
             "Occupation",
             [
@@ -66,27 +73,69 @@ with st.form("application_form"):
                 "informal artisan",
                 "formal employee",
             ],
+            index=(
+                [
+                    "maize farmer",
+                    "matooke farmer",
+                    "market vendor",
+                    "shea butter trader",
+                    "mama mboga",
+                    "boda-boda operator",
+                    "informal artisan",
+                    "formal employee",
+                ].index(GRACE_APPLICATION["occupation"])
+                if GRACE_APPLICATION["occupation"]
+                in [
+                    "maize farmer",
+                    "matooke farmer",
+                    "market vendor",
+                    "shea butter trader",
+                    "mama mboga",
+                    "boda-boda operator",
+                    "informal artisan",
+                    "formal employee",
+                ]
+                else 0
+            ),
         )
-        sub_county = st.text_input("Sub-county", value="Kakamega North")
+        sub_county = st.text_input("Sub-county", value=GRACE_APPLICATION["sub_county"])
 
     with c2:
         loan_amount = st.number_input(
             "Loan amount (KES)",
             min_value=1000,
             max_value=200000,
-            value=28000,
+            value=GRACE_APPLICATION["loan_amount_kes"],
             step=1000,
         )
-        loan_purpose = st.text_input("Loan purpose", value="school fees Term 1")
+        loan_purpose = st.text_input(
+            "Loan purpose", value=GRACE_APPLICATION["loan_purpose"]
+        )
         member_message = st.text_area(
-            "Member SMS message", value="No money for school fees this term"
+            "Member SMS message",
+            value=GRACE_APPLICATION["member_message"],
         )
 
     st.caption("Dependants")
     d_col1, d_col2, d_col3 = st.columns(3)
-    dep1 = d_col1.number_input("Child 1 age", min_value=0, max_value=25, value=6)
-    dep2 = d_col2.number_input("Child 2 age", min_value=0, max_value=25, value=9)
-    dep3 = d_col3.number_input("Child 3 age", min_value=0, max_value=25, value=14)
+    dep1 = d_col1.number_input(
+        "Child 1 age",
+        min_value=0,
+        max_value=25,
+        value=GRACE_APPLICATION["dependants"][0]["age"],
+    )
+    dep2 = d_col2.number_input(
+        "Child 2 age",
+        min_value=0,
+        max_value=25,
+        value=GRACE_APPLICATION["dependants"][1]["age"],
+    )
+    dep3 = d_col3.number_input(
+        "Child 3 age",
+        min_value=0,
+        max_value=25,
+        value=GRACE_APPLICATION["dependants"][2]["age"],
+    )
 
     submitted = st.form_submit_button(
         "Run Agent Pride — Process Application", type="primary"
@@ -94,70 +143,15 @@ with st.form("application_form"):
 
 if submitted:
     application = {
+        **GRACE_APPLICATION,
         "name": name,
         "age": age,
         "occupation": occupation,
         "sub_county": sub_county,
         "loan_amount_kes": loan_amount,
         "loan_purpose": loan_purpose,
+        "member_message": member_message,
         "dependants": [{"age": dep1}, {"age": dep2}, {"age": dep3}],
-        "mpesa_weekly_inflows": [
-            3200,
-            3400,
-            2900,
-            3100,
-            6800,
-            6500,
-            3000,
-            2800,
-            3200,
-            3300,
-            2950,
-            3100,
-            5900,
-            6400,
-            3100,
-            3200,
-            1800,
-            2100,
-            3000,
-            3200,
-            3100,
-            2900,
-            3400,
-            3200,
-            3100,
-            3000,
-            2950,
-            3300,
-            6700,
-            6300,
-            3100,
-            3200,
-            3000,
-            2900,
-            3100,
-            3200,
-            3100,
-            3000,
-            2950,
-            3300,
-            6800,
-            6500,
-            3000,
-            2800,
-            3200,
-            3300,
-            2950,
-            3100,
-            1900,
-            2000,
-            3000,
-            3200,
-        ],
-        "harvest_months": ["March", "April", "September", "October"],
-        "previous_loans": [],
-        "school_fee_months": ["January", "May", "September"],
     }
 
     st.divider()
@@ -167,14 +161,14 @@ if submitted:
 
     with guard_col1:
         try:
-            proxy_block({"income": 1, "mpesa_history": 1})
+            proxy_block(application)
             st.success("Proxy block: PASSED — no banned features in inputs")
         except ValueError as e:
             st.error(f"Proxy block: FAILED — {e}")
 
     with guard_col2:
         try:
-            kill_switch_check(member_message)
+            kill_switch_check(member_message or "")
             st.success("Kill switch: PASSED — no escalation triggers detected")
         except ValueError as e:
             st.warning(f"Kill switch: TRIGGERED — {e}")
@@ -214,9 +208,10 @@ if submitted:
             exc_str = str(exc).lower()
             exc_type = type(exc).__name__
             return (
-                (litellm is not None and isinstance(
-                    exc, getattr(litellm, "RateLimitError", type(None))
-                ))
+                (
+                    litellm is not None
+                    and isinstance(exc, getattr(litellm, "RateLimitError", type(None)))
+                )
                 or "RateLimitError" in exc_type
                 or "rate_limit_exceeded" in exc_str
                 or "resource_exhausted" in exc_str
@@ -234,7 +229,9 @@ if submitted:
                 if not _is_retryable(exc) or attempt == retry_attempts:
                     raise
 
-                delay = base_delay * (3 ** (attempt - 1)) + random.uniform(0, 2)  # noqa: S311
+                delay = base_delay * (3 ** (attempt - 1)) + random.uniform(
+                    0, 2
+                )  # noqa: S311
                 st.warning(
                     f"⏳ API limit or transient error (attempt {attempt}/{retry_attempts}). "
                     f"Retrying in {delay:.0f} seconds..."
@@ -251,7 +248,14 @@ if submitted:
 
         st.divider()
         st.subheader("Final Briefing Packet — Hunter Agent Output")
-        st.markdown(str(result))
+        output_text = str(result)
+        now = datetime.now()
+        output_text = (
+            output_text.replace("[Insert Date]", now.strftime("%Y-%m-%d"))
+            .replace("[Insert Time]", now.strftime("%H:%M:%S"))
+            .replace("[Insert Timestamp]", now.strftime("%Y-%m-%d %H:%M:%S"))
+        )
+        st.markdown(output_text)
 
         st.divider()
         st.subheader("PRIDE Loop — Human Officer Reminder")

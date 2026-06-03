@@ -6,6 +6,7 @@ GRACE_APPLICATION = {
     "loan_amount_kes": 28000,
     "loan_purpose": "school fees Term 1",
     "dependants": [{"age": 6}, {"age": 9}, {"age": 14}],
+    "member_message": "No money for school fees this term",
     "mpesa_weekly_inflows": [
         3200,
         3400,

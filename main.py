@@ -1,12 +1,6 @@
-# ruff: noqa: E402
-
-import crewai_env
-
-crewai_env.configure_crewai_environment()
-
 from crewai import Crew, Process
 
-from agents import scout_agent, guardian_agent, hunter_agent
+from agents import guardian_agent, hunter_agent, scout_agent
 from guard import kill_switch_check, proxy_block
 from mock_data import GRACE_APPLICATION
 from tasks import build_tasks

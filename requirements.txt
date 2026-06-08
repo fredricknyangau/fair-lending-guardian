@@ -1,11 +1,7 @@
-# CrewAI core — includes LiteLLM which routes to all providers
-crewai[google-genai]
-litellm
-python-dotenv
-streamlit
-# Pydantic v2 to match crewai and modern dependencies
-pydantic>=2.11.9
-# Cohere provider — required by LiteLLM for cohere/* models
-cohere
-# Cerebras uses OpenAI-compatible API (openai pkg already pulled in by crewai)
-# Ollama works natively with LiteLLM — no extra package needed
+crewai[google-genai]==1.14.6
+litellm==1.88.0
+python-dotenv==1.2.2
+streamlit==1.58.0
+pydantic==2.12.5
+cohere==7.0.3
+plotly==6.8.0

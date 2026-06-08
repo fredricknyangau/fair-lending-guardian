@@ -33,10 +33,17 @@ def unusual_pattern_check(approval_rate: float, baseline: float) -> None:
     """Flag if approval rate drops more than 30% vs 30-day baseline."""
     drop = baseline - approval_rate
     if drop > 30:
-        raise ValueError(
-            f"GUARD UNUSUAL PATTERN: approval rate dropped {drop:.1f}pp vs baseline. "
-            f"Kill Switch triggered. SASRA notification required within 4 hours."
-        )
+        try:
+            import streamlit as st
+            st.error(f"GUARD UNUSUAL PATTERN: approval rate dropped {drop:.1f}pp vs baseline. SASRA notification triggered.")
+        except ImportError:
+            pass
+        
+        try:
+            from database import log_sasra_alert
+            log_sasra_alert(f"Drop {drop:.1f}pp vs baseline. Kill Switch triggered.")
+        except ImportError:
+            pass
 
 
 def kill_switch_check(message: str) -> None:

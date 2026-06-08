@@ -144,7 +144,8 @@ class SafeLLM(LLM):
         return super().call(messages_copy, **kwargs)
 
 
-llm = SafeLLM(model=MODELS[LLM_PROVIDER], temperature=0.2, max_tokens=1500)
+llm_temperature = float(os.getenv("LLM_TEMPERATURE", "0.2"))
+llm = SafeLLM(model=MODELS[LLM_PROVIDER], temperature=llm_temperature, max_tokens=1500)
 
 scout_agent = Agent(
     role="financial literacy coach — scout agent",

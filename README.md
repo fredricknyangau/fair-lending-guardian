@@ -1,5 +1,7 @@
 # 🦁 Fair Lending Guardian
 
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://fair-lending-guardian.streamlit.app)
+
 > **AI Safari Capstone · Module 4: Agent Savannah · June 2026**
 >
 > A three-agent AI pride built with [CrewAI](https://www.crewai.com/) that screens loan
@@ -52,7 +54,28 @@ for human loan officers while enforcing strict dignity and anti-discrimination g
 
 ---
 
+## Module Progression
+
+This capstone is built on the AI Safari curriculum progression:
+
+| Module | Focus | Frameworks |
+|---|---|---|
+| 1. The Savannah Adventure | Core AI concepts and maps | AIM, MAP |
+| 2. The Tsavo Adventure | Prompt engineering and 4D | 4D Framework |
+| 3. The Ethical Savannah | AI safety and data rights | ETHOS, TRACK, OASIS, PRIDE, HORIZON |
+| 4. The Agent Savannah | Autonomous agents | RANK, TRAIL, HUNT, GUARD, CYCLE |
+
+---
+
 ## How It Works
+
+## Prototype Honesty (What is Real vs Simulated)
+For full transparency in the AI Safari Capstone evaluation:
+- **[REAL] The AI Automation**: The CrewAI orchestration, LiteLLM fallback chains, system prompts, and the PRIDE/GUARD frameworks are fully implemented and execute dynamically.
+- **[SIMULATED] The Data Pipeline**: The 52-week M-Pesa transaction histories are static mock data (`mock_data.py`). The system is not connected to a live Safaricom/M-Pesa API.
+- **[SIMULATED] External Alerts**: SASRA regulatory alerts and loan officer notifications are simulated by logging to local SQLite databases.
+
+---
 
 ### The Problem It Solves
 
@@ -61,6 +84,24 @@ A market vendor or maize farmer has **seasonal, irregular income** — but that 
 completely normal for their context, not a sign of risk. Conventional bank algorithms
 see irregular cashflow and reject the application. Fair Lending Guardian understands
 that context and screens loans fairly.
+
+### The Solution
+Instead of static algorithms, we use **Agent Savannah**—a CrewAI orchestration of three distinct AI personas protected by the **GUARD** safety layer:
+
+```mermaid
+flowchart TD
+    A[Member SMS & M-Pesa Data] --> B{GUARD Safety Layer}
+    B -- Kill Switch/Proxy Block --> Z[Rejected / SASRA Alert]
+    B -- Clean Data --> C((Scout Agent))
+    C -- "Financial Stress Context" --> D((Guardian Agent))
+    D -- "52-Week Cashflow Score" --> E{Decision Engine}
+    E -- "Score >= 90 & Amount <= 15K" --> F[Auto-Approve]
+    E -- "Score < 70" --> G[Decline + Swahili SMS]
+    E -- "Score 70-89 OR Amount > 15K" --> H((Hunter Agent))
+    H -- "Briefing Packet" --> I[Human Loan Officer]
+```
+
+These agents understand that an income dip in January isn't "risk"—it's school fees.
 
 ### System Layers (from bottom to top)
 

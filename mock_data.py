@@ -65,3 +65,19 @@ GRACE_APPLICATION = {
     "previous_loans": [],
     "school_fee_months": ["January", "May", "September"],
 }
+
+BODA_BODA_APPLICATION = {
+    "name": "David Ochieng",
+    "age": 31,
+    "occupation": "boda-boda operator",
+    "sub_county": "Busia",
+    "loan_amount_kes": 10000,
+    "loan_purpose": "motorcycle repair",
+    "dependants": [{"age": 2}, {"age": 5}],
+    "member_message": "Bike broke down need to fix before market day",
+    "mpesa_weekly_inflows": [1500, 3000, 2000, 4000] * 13, # 52 weeks simulating market day fluctuation
+    "mpesa_daily_pattern": "High on market days Tuesday, Thursday, Saturday; near zero other days.",
+    "harvest_months": [],
+    "previous_loans": [],
+    "school_fee_months": [],
+}
